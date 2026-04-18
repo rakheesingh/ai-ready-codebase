@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>airead report — {{ project_name }}</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --card: #161a22;
+    --text: #e6e6e6;
+    --muted: #8a8f99;
+    --border: #232833;
+    --green: #4ade80;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --accent: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  .summary {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 24px;
+  }
+  .stat { flex: 1; min-width: 140px; }
+  .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .stat .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+  .stat.critical .value { color: var(--red); }
+  .stat.needs .value { color: var(--yellow); }
+  .stat.ok .value { color: var(--green); }
+  .controls {
+    display: flex; gap: 12px; align-items: center; margin-bottom: 12px;
+  }
+  .controls input, .controls select {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 13px;
+  }
+  .controls input { flex: 1; }
+  table {
+    width: 100%; border-collapse: collapse;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); cursor: pointer; user-select: none; }
+  th.sorted::after { content: " ↓"; color: var(--accent); }
+  tr:last-child td { border-bottom: none; }
+  tr.row { cursor: pointer; }
+  tr.row:hover { background: rgba(255,255,255,0.02); }
+  tr.detail { display: none; background: #0d1017; }
+  tr.detail.open { display: table-row; }
+  tr.detail td { padding: 16px 20px; }
+  .score-cell { font-weight: 600; }
+  .score-cell.green { color: var(--green); }
+  .score-cell.yellow { color: var(--yellow); }
+  .score-cell.red { color: var(--red); }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+  }
+  .pill.green { background: rgba(74,222,128,.15); color: var(--green); }
+  .pill.yellow { background: rgba(251,191,36,.15); color: var(--yellow); }
+  .pill.red { background: rgba(248,113,113,.15); color: var(--red); }
+  .dim-grid { display: grid; grid-template-columns: 200px 1fr; gap: 8px 16px; }
+  .dim-name { font-weight: 600; }
+  .finding { color: var(--muted); margin: 2px 0; }
+  pre {
+    background: #05070b; border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; overflow-x: auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px;
+    margin: 12px 0 0; color: #cbd5e1;
+  }
+  .loc { color: var(--muted); font-size: 12px; font-family: "SF Mono", Menlo, monospace; }
+  .sig { font-family: "SF Mono", Menlo, monospace; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>airead report</h1>
+  <div class="subtitle">{{ project_name }} &middot; generated {{ generated_at }}</div>
+
+  <div class="summary">
+    <div class="stat">
+      <div class="label">Overall</div>
+      <div class="value">{{ achieved }}/{{ possible }} <span style="font-size:14px;color:var(--muted)">({{ overall_pct }}%)</span></div>
+    </div>
+    <div class="stat"><div class="label">Functions</div><div class="value">{{ total }}</div></div>
+    <div class="stat critical"><div class="label">Critical (≤2)</div><div class="value">{{ critical }}</div></div>
+    <div class="stat needs"><div class="label">Needs work (3–5)</div><div class="value">{{ needs_work }}</div></div>
+    <div class="stat ok"><div class="label">OK (≥6)</div><div class="value">{{ ok }}</div></div>
+  </div>
+
+  <div class="controls">
+    <input id="search" placeholder="Search by function name, file, or finding…" />
+    <select id="sort">
+      <option value="impact">Sort: highest impact first</option>
+      <option value="score-asc">Sort: lowest score first</option>
+      <option value="score-desc">Sort: highest score first</option>
+      <option value="name">Sort: function name</option>
+      <option value="file">Sort: file path</option>
+    </select>
+  </div>
+
+  <table id="t">
+    <thead>
+      <tr>
+        <th data-sort="score">Score</th>
+        <th>Naming</th>
+        <th>SRP</th>
+        <th>Side-effects</th>
+        <th>Local reasoning</th>
+        <th>Function</th>
+        <th>Location</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="row" data-idx="{{ loop.index0 }}" data-score="{{ r.total }}" data-name="{{ r.name|lower }}" data-file="{{ r.location|lower }}" data-search="{{ r.search_blob|lower }}">
+        <td><span class="score-cell {{ r.score_color }}">{{ r.total }}/{{ r.max_total }}</span></td>
+        {% for d in r.dims %}
+        <td><span class="pill {{ d.color }}">{{ d.score }}</span></td>
+        {% endfor %}
+        <td class="sig">{{ r.signature }}</td>
+        <td class="loc">{{ r.location }}</td>
+      </tr>
+      <tr class="detail" id="d-{{ loop.index0 }}">
+        <td colspan="7">
+          <div class="dim-grid">
+            {% for d in r.dims %}
+            <div class="dim-name"><span class="pill {{ d.color }}">{{ d.score }}/2</span> {{ d.label }}</div>
+            <div>
+              {% if d.findings %}
+                {% for f in d.findings %}
+                  <div class="finding">• {{ f }}</div>
+                {% endfor %}
+              {% else %}
+                <div class="finding" style="color:var(--green)">no issues detected</div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          <pre>{{ r.source }}</pre>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <footer>airead v{{ version }} · static analysis only · LLM suggestions arrive in M2</footer>
+
+<script>
+  const tbody = document.querySelector('#t tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr.row'));
+  const details = Array.from(tbody.querySelectorAll('tr.detail'));
+
+  rows.forEach(r => r.addEventListener('click', () => {
+    const idx = r.dataset.idx;
+    document.getElementById('d-' + idx).classList.toggle('open');
+  }));
+
+  document.getElementById('search').addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    rows.forEach((r, i) => {
+      const match = !q || r.dataset.search.includes(q);
+      r.style.display = match ? '' : 'none';
+      const d = document.getElementById('d-' + r.dataset.idx);
+      if (!match) d.classList.remove('open');
+      d.style.display = match && d.classList.contains('open') ? 'table-row' : (match ? '' : 'none');
+    });
+  });
+
+  document.getElementById('sort').addEventListener('change', (e) => {
+    const mode = e.target.value;
+    const pairs = rows.map((r, i) => ({ r, d: details[i] }));
+    pairs.sort((a, b) => {
+      if (mode === 'score-asc') return (+a.r.dataset.score) - (+b.r.dataset.score);
+      if (mode === 'score-desc') return (+b.r.dataset.score) - (+a.r.dataset.score);
+      if (mode === 'name') return a.r.dataset.name.localeCompare(b.r.dataset.name);
+      if (mode === 'file') return a.r.dataset.file.localeCompare(b.r.dataset.file);
+      return (+a.r.dataset.idx) - (+b.r.dataset.idx);
+    });
+    pairs.forEach(p => { tbody.appendChild(p.r); tbody.appendChild(p.d); });
+  });
+</script>
+</body>
+</html>
