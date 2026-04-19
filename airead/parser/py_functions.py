@@ -24,6 +24,10 @@ SKIP_DIRS = {
     ".mypy_cache",
     ".tox",
     ".airead",
+    ".DS_Store",
+    "requirements.txt",
+    "README.md",
+    "LICENSE",
 }
 
 
